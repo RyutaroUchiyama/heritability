@@ -6,15 +6,14 @@
 rm(list = ls())
 # =*=*=*=*=*=*=*=*=*=*=*
 library(tidyverse)
-library(ggplot2)
 library(moments)
-source("/Users/ryutaro/Desktop/Muthukrishna_Lab/sociality-IQ/simulation run scripts/heritability_sim_functions_02.R")
-# ^ set directory containing heritability_sim_functions_xx.R
+# set directory containing heritability_sim_functions.R
+source("heritability_sim_functions.R")
 
 loops <- 20
 repeat_runs <- 1 # number of runs for each generative model configuration (of the coefficient matrix). Simulation is run this number of times for each of the 3 'cult.mode' or tightness levels. So coefficient matrix gets reconfigured every 3*repeat_runs loops    
 N <- 500 #number of agents
-### cult.mode <- "sel_95tight"  # { "sel_95tight", "sel_95mid", "sel_95loose" } 
+# cult.mode <- "sel_95tight"  # { "sel_95tight", "sel_95mid", "sel_95loose" } 
 cult.steps <- 4
 G_vars <- 4
 E_vars <- 2
@@ -39,7 +38,7 @@ results.variables <- c("step","cult.mode", "interact.ratio", "interact.strength"
 
 for (count in 1:loops){
   print(paste0("loop: ",count, " of ",loops))
-
+  
   ### step <- 1 # This line is not neccesary. Just use when running the script without the looping through the main loop 
   results <- data.frame(matrix(NA,1:cult.steps,length(results.variables))) 
   names(results) <- results.variables
@@ -50,7 +49,7 @@ for (count in 1:loops){
   ind_GC <- c(1:G_vars, (G_vars+E_vars+1):GEC_vars)
   ind_GE <- 1:(G_vars+E_vars)
   ind_EC <- (G_vars+1):GEC_vars
-
+  
   # configuring the coefficient matrix, but only once every (repeat_runs * 3) loops
   if (count %% (repeat_runs*3) ==1 ){ #### keeping generative model coefficients constant across cult_mode settings
     print("coefficients updated")
@@ -59,14 +58,14 @@ for (count in 1:loops){
     maineffects <- rnorm(GEC_vars) /init_alpha_beta_sd 
     interactions <- get_interactions(GEC_vars, init_alpha_beta_sd, interaction.ratio, interaction.strength)
     interactions.double <- (interactions + t(interactions))
-    }
-
+  }
+  
   # setting cult.mode, and computing beta distributions
   if (count %% (repeat_runs*3) == 1 ){cult.mode <- "sel_95tight"}
   if (count %% (repeat_runs*3) == (1+repeat_runs) ){cult.mode <- "sel_95mid"}
   if (count %% (repeat_runs*3) == (1+repeat_runs*2) | count %% (repeat_runs*3) == 0 ){cult.mode <- "sel_95loose"}
-  cult.alpha <- get_cult.alpha(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta)
-  cult.beta <- get_cult.beta(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta)
+  cult.alpha <- get_cult(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta, alpha_beta = "alpha")
+  cult.beta <- get_cult(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta, alpha_beta = "beta")
   
   # prepare tables for logging data
   modelparam_list_full <- data.frame(matrix(NA,cult.steps,GEC_vars+1)) 
@@ -88,7 +87,7 @@ for (count in 1:loops){
   
   #@@@@@@ INNER LOOP START @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
   for (step in 1:cult.steps){
-   
+    
     pop <- get_pop(N,G_vars,E_vars,C_vars,init_alpha_beta,step,phenotype.name) # generate population scores
     names(rankings)[3:dim(rankings)[2]] <- names(pop)
     
@@ -134,47 +133,32 @@ for (count in 1:loops){
     modelstring_GEC <- paste0("smart ~ ", string_G,"+",string_E,"+",string_C)
     modelstring_I <- paste0("smart ~ ", string_I)
     modelstring_full <- paste0("smart ~ ", string_G,"+",string_E,"+",string_C,"+",string_I)
-      
-    lm_G <- lm( eval(parse(text=modelstring_G)), data=pop.st)
-    lm_E <- lm( eval(parse(text=modelstring_E)), data=pop.st)
-    lm_C <- lm( eval(parse(text=modelstring_C)), data=pop.st)
-    lm_EC <- lm( eval(parse(text=modelstring_EC)), data=pop.st)
-    lm_GEC <- lm( eval(parse(text=modelstring_GEC)), data=pop.st)
-    lm_I <- lm( eval(parse(text=modelstring_I)), data=pop.st)
-    lm_full <- lm( eval(parse(text=modelstring_full)), data=pop.st)
+    # list model strings
+    model_list = list(modelstring_G, modelstring_E, modelstring_C, modelstring_EC, modelstring_GEC, modelstring_I, modelstring_full)
+    # perform regression
+    lm_models <- map(model_list, function(x) summary(lm(eval(parse(text=x)), data=pop.st)))
+    names(lm_models) <- c("model_G", "model_E", "model_C", "model_EC", "model_GEC", "model_I", "model_full")
+    # extract R^2
+    effects <- map(lm_models, function(x) round(x$r.squared, digits=3))
+    list2env(effects ,.GlobalEnv)
     
-    model_G <- summary(lm_G) 
-    model_E <- summary(lm_E)
-    model_C <- summary(lm_C)
-    model_EC <- summary(lm_EC)
-    model_GEC <- summary(lm_GEC)
-    model_I <- summary(lm_I)
-    model_full <- summary(lm_full)
-    
-    effect_G <- round(model_G$r.squared, digits=3) # extract R^2
-    effect_E <- round(model_E$r.squared, digits=3)
-    effect_C <- round(model_C$r.squared, digits=3)
-    effect_EC <- round(model_EC$r.squared, digits=3)
-    effect_GEC <- round(model_GEC$r.squared, digits=3)
-    effect_I <- round(model_I$r.squared, digits=3)
-    effect_full <- round(model_full$r.squared, digits=3)
     h2 <- round(effect_G/(effect_G + effect_E + effect_C), digits=3)
     cultparams <- get_cultparams(cult.alpha, cult.beta, step)
     
     results[step,] <- c(step, cult.mode, interaction.ratio, interaction.strength, init_alpha_beta,   
-                     effect_G, effect_E, effect_C, effect_EC, effect_GEC,
-                     effect_I, effect_full,  h2, round(mean(phenotype.IQformat),1),
-                     round(var(phenotype.IQformat),1), round(skewness(phenotype.IQformat),3), 
-                      round(kurtosis(phenotype.IQformat),3), N, G_vars, E_vars, C_vars)
+                        effect_G, effect_E, effect_C, effect_EC, effect_GEC,
+                        effect_I, effect_full,  h2, round(mean(phenotype.IQformat),1),
+                        round(var(phenotype.IQformat),1), round(skewness(phenotype.IQformat),3), 
+                        round(kurtosis(phenotype.IQformat),3), N, G_vars, E_vars, C_vars)
     
     sortedagents <- cbind(sort(phenotype.IQformat, decreasing=T, index.return=T)$x[c(1:ranking_length,(N-ranking_length+1):N)], 
-                    sort(phenotype.IQformat, decreasing=T, index.return=T)$ix[c(1:50,(N-49):N)])
+                          sort(phenotype.IQformat, decreasing=T, index.return=T)$ix[c(1:50,(N-49):N)])
     rankings[which(rankings$cult.steps==step),(3:dim(rankings)[2])] <- round(pop[sortedagents[,2],],3)
-  
+    
     # paste model parameters into cumulative matrices
     modelparam_list_full[step, 2:(GEC_vars+1)] <- t(round(model_full$coef,3)[2:(GEC_vars+1)])
     modelparam_list_GEC[step, 2:(GEC_vars+1)] <- t(round(model_GEC$coef,3)[2:(GEC_vars+1)])
-  
+    
   } # INNER LOOP END
   
   
@@ -187,7 +171,7 @@ for (count in 1:loops){
   colnames(alleffects.beta) <- names(pop)[1:(dim(pop)[2]-1)]
   alleffects.beta$names <- names(pop)[1:(dim(pop)[2]-1)]
   alleffects.beta$vars_influence <- round(maineffects + colSums(interactions.double), 3)
-
+  
   # summaries of change in inferred model parameters
   modelparam_list_GEC[cult.steps+1,] <- round(modelparam_list_GEC[cult.steps,]-modelparam_list_GEC[1,], 3)
   modelparam_list_GEC[cult.steps+2,] <- sign(modelparam_list_GEC[cult.steps,]*modelparam_list_GEC[1,])
@@ -198,7 +182,7 @@ for (count in 1:loops){
   
   colnames(modelparam_list_full) <- c("cult.step", names(pop)[1:(dim(pop)[2]-1)])
   colnames(modelparam_list_GEC) <- c("cult.step", names(pop)[1:(dim(pop)[2]-1)])
-
+  
   time <- as.POSIXlt(Sys.time()) #timestamp
   timeB <- paste0("-",time$hour,"h", time$min,"m")
   
@@ -210,11 +194,5 @@ for (count in 1:loops){
   write.csv(modelparam_list_full, paste0(filestring, timeB, "-maineffects-fullmodel.csv"))
   write.csv(modelparam_list_GEC, paste0(filestring, timeB, "-maineffects-GECmodel.csv"))
   write.csv(cultparams, paste0(filestring, timeB, "-cultparams.csv"))
-
-
-  } # END OUTER LOOP
-
-
-
-
-
+  
+} # END OUTER LOOP

@@ -15,37 +15,30 @@ get_interactions <- function(GEC_vars, init_alpha_beta_sd, interaction.ratio, in
   interactions[entries] <-  interactions[entries] *sample(interaction.removal)
   interactions <- interactions /((GEC_vars-1) *interaction.ratio) * interaction.strength # first controlling for number of interactions culled by interaction.ratio, then multiplying by interaction.strength. Result: [ sum(abs(interaction terms)) /interaction.strength] is expected to be equal to the absolute magnitude of the main effect   
   interactions
-  }
-
-
-get_cult.alpha <- function(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta){
-  sel_95tight <- c(800,42); sel_95mid <- c(80,4.2); sel_95loose <- c(8,0.42);
-  sel <- eval(parse(text=cult.mode))
-  cult.sign <- sign( maineffects[ind_C] + colSums(interactions.double[,ind_C])) # which direction do the cult distribuitions need to move
-  cult.alpha <- matrix(NA, cult.steps, C_vars)
-  for (i in 1:C_vars){
-    if (cult.sign[i]== 1){
-      cult.alpha[,i] <-  exp(seq(log(init_alpha_beta), log(sel[1]),length.out=cult.steps))}
-    if (cult.sign[i]== -1){
-      cult.alpha[,i] <-  exp(seq(log(init_alpha_beta), log(sel[2]),length.out=cult.steps))}
-  }
-  cult.alpha
 }
 
-get_cult.beta <- function(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta){
+get_cult <- function(cult.mode, maineffects, interactions.double, ind_C, C_vars, cult.steps, init_alpha_beta, alpha_beta){
   sel_95tight <- c(800,42); sel_95mid <- c(80,4.2); sel_95loose <- c(8,0.42);
   sel <- eval(parse(text=cult.mode))
   cult.sign <- sign( maineffects[ind_C] + colSums(interactions.double[,ind_C])) # which direction do the cult distribuitions need to move
-  cult.beta <- matrix(NA, cult.steps, C_vars)
-  for (i in 1:C_vars){
-    if (cult.sign[i]== 1){
-      cult.beta[,i] <-   exp(seq(log(init_alpha_beta), log(sel[2]),length.out=cult.steps))}
-    if (cult.sign[i]== -1){
-      cult.beta[,i] <-   exp(seq(log(init_alpha_beta), log(sel[1]),length.out=cult.steps))}
+  cult <- matrix(NA, cult.steps, C_vars)
+  if (alpha_beta == "alpha") {
+    for (i in 1:C_vars){
+      if (cult.sign[i]== 1){
+        cult[,i] <-  exp(seq(log(init_alpha_beta), log(sel[1]),length.out=cult.steps))}
+      if (cult.sign[i]== -1){
+        cult[,i] <-  exp(seq(log(init_alpha_beta), log(sel[2]),length.out=cult.steps))}
     }
-  cult.beta
-  }
-
+  } else if (alpha_beta == "beta") {
+    for (i in 1:C_vars){
+      if (cult.sign[i]== 1){
+        cult[,i] <-   exp(seq(log(init_alpha_beta), log(sel[2]),length.out=cult.steps))}
+      if (cult.sign[i]== -1){
+        cult[,i] <-   exp(seq(log(init_alpha_beta), log(sel[1]),length.out=cult.steps))}
+    }
+  }   
+  cult
+}
 
 get_pop <- function(N,G_vars,E_vars,C_vars,init_alpha_beta,step,phenotype.name){ 
   # initial scores for each genetic, ecological, and cultural factor
@@ -65,7 +58,7 @@ get_pop <- function(N,G_vars,E_vars,C_vars,init_alpha_beta,step,phenotype.name){
   for(i in 1:E_vars) { names(pop)[i+G_vars] <- paste0("eco_",as.character(i)) }
   for(i in 1:C_vars) { names(pop)[i+G_vars+E_vars] <- paste0("cult_",as.character(i)) }
   pop
-  }
+}
 
 
 
@@ -103,13 +96,3 @@ get_cultparams <- function(cult.alpha, cult.beta, step){
   }
   cultparams 
 }
-
-
-
-
-
-
-
-
-
-
